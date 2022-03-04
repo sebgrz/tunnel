@@ -22,7 +22,7 @@ func main() {
 	baseHostname = flag.String("hostname", "", "Base hostname - it will be use to generate subdomains")
 	flag.Parse()
 
-	server := server.NewServer(*externalPort)
+	server := server.NewServer(*externalPort, *advertisingAgentPort)
 
 	done := make(chan os.Signal)
 	server.Start()

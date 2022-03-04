@@ -44,12 +44,10 @@ func (c *ExternalConnection) Listen() {
 			log.Fatal(err)
 		}
 		log.Printf("Recv bytes: %d", bl)
-		if bl == 0 {
+		msgBytes = append(msgBytes, b...)
+		if bl < len(b) {
 			break
 		}
-
-		msgBytes = append(msgBytes, b...)
-
 	}
 
 	br := bufio.NewReader(bytes.NewReader(msgBytes))
