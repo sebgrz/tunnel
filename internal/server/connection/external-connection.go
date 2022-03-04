@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"proxy/internal/server/pack"
 
 	"github.com/hashicorp/go-uuid"
 )
@@ -14,15 +15,17 @@ import (
 type ExternalConnection struct {
 	ID                   string
 	connection           net.Conn
-	chanRemoveConnection chan string
+	chanRemoveConnection chan<- string
+	chanMsgToInternal    chan<- pack.ChanProxyMessageToInternal
 }
 
-func NewExternalConnection(con net.Conn, chanRemoveConnection chan string) *ExternalConnection {
+func NewExternalConnection(con net.Conn, chanRemoveConnection chan<- string, chanMsgToInternal chan<- pack.ChanProxyMessageToInternal) *ExternalConnection {
 	id, _ := uuid.GenerateUUID()
 	c := &ExternalConnection{
 		ID:                   id,
 		connection:           con,
 		chanRemoveConnection: chanRemoveConnection,
+		chanMsgToInternal:    chanMsgToInternal,
 	}
 	return c
 }
@@ -30,33 +33,38 @@ func NewExternalConnection(con net.Conn, chanRemoveConnection chan string) *Exte
 func (c *ExternalConnection) Listen() {
 	log.Printf("New connection: %s", c.connection.RemoteAddr().String())
 
-	b := make([]byte, 1024)
-	bl, err := c.connection.Read(b)
-	if err != nil {
-		if err == io.EOF {
-			c.chanRemoveConnection <- c.ID
-			return
+	msgBytes := make([]byte, 0)
+	for {
+		b := make([]byte, 1024)
+		bl, err := c.connection.Read(b)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			log.Fatal(err)
 		}
-		log.Fatal(err)
-	}
-	log.Printf("Recv bytes: %d", bl)
-	if bl == 0 {
-		c.chanRemoveConnection <- c.ID
-		return
+		log.Printf("Recv bytes: %d", bl)
+		if bl == 0 {
+			break
+		}
+
+		msgBytes = append(msgBytes, b...)
+
 	}
 
-	br := bufio.NewReader(bytes.NewReader(b))
+	br := bufio.NewReader(bytes.NewReader(msgBytes))
 	httpRequest, err := http.ReadRequest(br)
 	if err != nil {
 		c.chanRemoveConnection <- c.ID
 		log.Fatal(err)
 	}
 	log.Printf("HOST: %s", httpRequest.Host)
-	for k, v := range httpRequest.Header {
-		log.Printf("%s - %s", k, v)
+	c.chanMsgToInternal <- pack.ChanProxyMessageToInternal{
+		Host:    httpRequest.Host,
+		Content: msgBytes,
 	}
-
 	log.Printf("End receiving")
+
 	responseMessage := `
 HTTP/1.1 200 OK
 Date: Sun, 10 Oct 2010 23:26:07 GMT

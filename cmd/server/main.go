@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"proxy/internal/server"
-	"proxy/internal/server/listener"
 )
 
 var (
@@ -23,7 +22,7 @@ func main() {
 	baseHostname = flag.String("hostname", "", "Base hostname - it will be use to generate subdomains")
 	flag.Parse()
 
-	server := server.NewServer(listener.NewExternalListener(*externalPort))
+	server := server.NewServer(*externalPort)
 
 	done := make(chan os.Signal)
 	server.Start()

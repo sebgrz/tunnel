@@ -5,33 +5,33 @@ import (
 	"log"
 	"net"
 	"proxy/internal/server/connection"
+	"proxy/internal/server/inter"
+	"proxy/internal/server/pack"
 )
-
-type ChanConnection struct {
-	connectionID string
-	connection   *connection.ExternalConnection
-}
 
 type ExternalListener struct {
 	port                 string
-	connections          map[string]*connection.ExternalConnection
-	chanAddConnection    chan ChanConnection
+	connections          map[string]inter.ListenConnection
+	chanAddConnection    chan pack.ChanExternalConnection
 	chanRemoveConnection chan string
+	chanMsgToInternal    chan<- pack.ChanProxyMessageToInternal
 }
 
-func NewExternalListener(port string) *ExternalListener {
+func NewExternalListener(port string, chanMsgToInternal chan<- pack.ChanProxyMessageToInternal) *ExternalListener {
 	l := &ExternalListener{
 		port:                 port,
-		connections:          make(map[string]*connection.ExternalConnection),
-		chanAddConnection:    make(chan ChanConnection),
+		connections:          make(map[string]inter.ListenConnection),
+		chanAddConnection:    make(chan pack.ChanExternalConnection),
 		chanRemoveConnection: make(chan string),
+		chanMsgToInternal:    chanMsgToInternal,
 	}
+
 	go func() {
 		for {
 			select {
 			case addConnection := <-l.chanAddConnection:
-				l.connections[addConnection.connectionID] = addConnection.connection
-				log.Printf("connection: %s added", addConnection.connectionID)
+				l.connections[addConnection.ConnectionID] = addConnection.Connection
+				log.Printf("connection: %s added", addConnection.ConnectionID)
 			case removeConnection := <-l.chanRemoveConnection:
 				delete(l.connections, removeConnection)
 				log.Printf("connection: %s removed", removeConnection)
@@ -54,10 +54,10 @@ func (l *ExternalListener) Run() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			ec := connection.NewExternalConnection(con, l.chanRemoveConnection)
-			l.chanAddConnection <- ChanConnection{
-				connectionID: ec.ID,
-				connection:   ec,
+			ec := connection.NewExternalConnection(con, l.chanRemoveConnection, l.chanMsgToInternal)
+			l.chanAddConnection <- pack.ChanExternalConnection{
+				ConnectionID: ec.ID,
+				Connection:   ec,
 			}
 			go ec.Listen()
 		}
