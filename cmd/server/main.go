@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"proxy/internal/server"
 	"proxy/internal/server/listener"
 )
 
@@ -22,10 +23,10 @@ func main() {
 	baseHostname = flag.String("hostname", "", "Base hostname - it will be use to generate subdomains")
 	flag.Parse()
 
-	externalListener := listener.NewExternalListener(*externalPort)
+	server := server.NewServer(listener.NewExternalListener(*externalPort))
 
 	done := make(chan os.Signal)
-	externalListener.Run()
+	server.Start()
 	<-done
 
 	log.Print("server stopped")
