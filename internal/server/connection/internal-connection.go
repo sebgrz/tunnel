@@ -57,9 +57,8 @@ func (c *InternalConnection) Listen() {
 		bl, err := c.connection.Read(b)
 		if err != nil {
 			if err == io.EOF {
-				c.parseBytesMessage(msgBytes)
 				msgBytes = make([]byte, 0)
-				continue
+				break
 			}
 			c.chanRemoveConnection <- c.Host
 			log.Print(err)
@@ -74,6 +73,7 @@ func (c *InternalConnection) Listen() {
 		}
 	}
 	log.Printf("End receiving")
+	c.connection.Close()
 	c.chanRemoveConnection <- c.Host
 }
 

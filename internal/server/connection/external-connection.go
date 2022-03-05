@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"proxy/internal/server/pack"
+	"strings"
 
 	"github.com/hashicorp/go-uuid"
 )
@@ -56,9 +57,10 @@ func (c *ExternalConnection) Listen() {
 		c.chanRemoveConnection <- c.ID
 		log.Fatal(err)
 	}
-	log.Printf("HOST: %s", httpRequest.Host)
+	hostArr := strings.Split(httpRequest.Host, ":") // <hostname>:<port>
+	log.Printf("HOST: %s", hostArr[0])
 	c.chanMsgToInternal <- pack.ChanProxyMessageToInternal{
-		Host:    httpRequest.Host,
+		Host:    hostArr[0],
 		Content: msgBytes,
 	}
 	log.Printf("End receiving")
