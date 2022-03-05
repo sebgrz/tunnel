@@ -44,7 +44,7 @@ func (c *ExternalConnection) Listen() {
 			log.Fatal(err)
 		}
 		log.Printf("Recv bytes: %d", bl)
-		msgBytes = append(msgBytes, b...)
+		msgBytes = append(msgBytes, b[:bl]...)
 		if bl < len(b) {
 			break
 		}

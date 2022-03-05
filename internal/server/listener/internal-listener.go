@@ -64,11 +64,7 @@ func (l *InternalListener) Run() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			ec := connection.NewInternalConnection(con, l.chanRemoveConnection)
-			l.chanAddConnection <- pack.ChanInternalConnection{
-				Host:       ec.Host,
-				Connection: ec,
-			}
+			ec := connection.NewInternalConnection(con, l.chanRemoveConnection, l.chanAddConnection)
 			go ec.Listen()
 		}
 	}()

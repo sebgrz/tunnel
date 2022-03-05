@@ -5,8 +5,12 @@ import (
 	"io"
 	"log"
 	"net"
+	"proxy/internal/server/messagehandler"
+	"proxy/internal/server/pack"
+	"proxy/pkg/message"
 
 	"github.com/hashicorp/go-uuid"
+	goeh "github.com/hetacode/go-eh"
 )
 
 type InternalConnection struct {
@@ -14,15 +18,21 @@ type InternalConnection struct {
 	Host                 string
 	connection           net.Conn
 	chanRemoveConnection chan<- string
+	chanAddConnection    chan<- pack.ChanInternalConnection
+	eventsMapper         *goeh.EventsMapper
+	eventsHandlerManager *goeh.EventsHandlerManager
 }
 
-func NewInternalConnection(con net.Conn, chanRemoveConnection chan<- string) *InternalConnection {
+func NewInternalConnection(con net.Conn, chanRemoveConnection chan<- string, chanAddConnection chan<- pack.ChanInternalConnection) *InternalConnection {
 	id, _ := uuid.GenerateUUID()
 	c := &InternalConnection{
 		ID:                   id,
 		connection:           con,
 		chanRemoveConnection: chanRemoveConnection,
+		chanAddConnection:    chanAddConnection,
+		eventsMapper:         message.NewEventsMapper(),
 	}
+	c.eventsHandlerManager = c.registerMessageHandlers()
 	return c
 }
 
@@ -47,26 +57,46 @@ func (c *InternalConnection) Listen() {
 		bl, err := c.connection.Read(b)
 		if err != nil {
 			if err == io.EOF {
-				parseBytesMessage(msgBytes)
+				c.parseBytesMessage(msgBytes)
 				msgBytes = make([]byte, 0)
 				continue
 			}
-			c.chanRemoveConnection <- c.ID
+			c.chanRemoveConnection <- c.Host
 			log.Print(err)
 			break
 		}
 		log.Printf("Recv bytes: %d", bl)
-		msgBytes = append(msgBytes, b...)
-		if bl == 0 {
-			parseBytesMessage(msgBytes)
-			c.chanRemoveConnection <- c.ID
+		msgBytes = append(msgBytes, b[:bl]...)
+		if bl < len(b) {
+			c.parseBytesMessage(msgBytes)
+			msgBytes = make([]byte, 0)
 			continue
 		}
 	}
 	log.Printf("End receiving")
-	c.chanRemoveConnection <- c.ID
+	c.chanRemoveConnection <- c.Host
 }
 
-func parseBytesMessage(msgBytes []byte) {
-	// TODO: message handler
+func (c *InternalConnection) SetHost(host string) {
+	c.Host = host
+	c.chanAddConnection <- pack.ChanInternalConnection{
+		Host:       host,
+		Connection: c,
+	}
+}
+
+func (c *InternalConnection) parseBytesMessage(msgBytes []byte) {
+	event, err := c.eventsMapper.Resolve(string(msgBytes))
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	c.eventsHandlerManager.Execute(event)
+}
+
+func (c *InternalConnection) registerMessageHandlers() *goeh.EventsHandlerManager {
+	ehm := goeh.NewEventsHandlerManager()
+	ehm.Register(new(message.AgentRegistrationMessage), &messagehandler.AgentRegistrationMessageHandler{Connection: c})
+	return ehm
+
 }
