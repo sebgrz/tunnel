@@ -15,6 +15,7 @@ type ExternalListener struct {
 	chanAddConnection    chan pack.ChanExternalConnection
 	chanRemoveConnection chan string
 	chanMsgToInternal    chan<- pack.ChanProxyMessageToInternal
+	chanMsgToExternal    <-chan pack.ChanProxyMessageToExternal
 }
 
 func NewExternalListener(port string, chanMsgToInternal chan<- pack.ChanProxyMessageToInternal) *ExternalListener {

@@ -60,28 +60,14 @@ func (c *ExternalConnection) Listen() {
 	hostArr := strings.Split(httpRequest.Host, ":") // <hostname>:<port>
 	log.Printf("HOST: %s", hostArr[0])
 	c.chanMsgToInternal <- pack.ChanProxyMessageToInternal{
-		Host:    hostArr[0],
-		Content: msgBytes,
+		ExternalConnectionID: c.ID,
+		Host:                 hostArr[0],
+		Content:              msgBytes,
 	}
 	log.Printf("End receiving")
 
-	responseMessage := `
-HTTP/1.1 200 OK
-Date: Sun, 10 Oct 2010 23:26:07 GMT
-Server: Proxy Server 
-Last-Modified: Sun, 26 Sep 2010 22:04:35 GMT
-ETag: "45b6-834-49130cc1182c0"
-Accept-Ranges: bytes
-Content-Length: 12
-Connection: close
-Content-Type: text/html
+	// TODO: wait foe agent response
 
-OK!`
-	_, err = c.connection.Write([]byte(responseMessage))
-	if err != nil {
-		c.chanRemoveConnection <- c.ID
-		log.Fatal(err)
-	}
 	err = c.connection.Close()
 	if err != nil {
 		c.chanRemoveConnection <- c.ID

@@ -15,6 +15,12 @@ type ChanExternalConnection struct {
 }
 
 type ChanProxyMessageToInternal struct {
-	Host    string
-	Content []byte
+	ExternalConnectionID string
+	Host                 string
+	Content              []byte
+}
+
+type ChanProxyMessageToExternal struct {
+	ExternalConnectionID string
+	Content              []byte
 }
