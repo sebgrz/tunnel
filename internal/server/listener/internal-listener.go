@@ -35,18 +35,18 @@ func NewInternalListener(port string, chanMsg <-chan pack.ChanProxyMessageToInte
 					if err != nil {
 						log.Print(err)
 					}
-					mu.Unlock()
 				}
+				mu.Unlock()
 			case addConnection := <-l.chanAddConnection:
 				l.connections[addConnection.Host] = addConnection.Connection
-				log.Printf("connection: %s added", addConnection.Host)
+				log.Printf("internal connection: %s added", addConnection.Host)
 			case removeConnection := <-l.chanRemoveConnection:
 				mu.Lock()
 				delete(l.connections, removeConnection)
-				log.Printf("connection: %s removed", removeConnection)
+				log.Printf("internal connection: %s removed", removeConnection)
 				mu.Unlock()
 			}
-			log.Printf("connections: %d", len(l.connections))
+			log.Printf("internal connections: %d", len(l.connections))
 		}
 	}()
 	return l

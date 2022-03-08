@@ -41,7 +41,7 @@ func NewInternalConnection(con net.Conn, chanRemoveConnection chan<- string, cha
 
 func (c *InternalConnection) Send(externalConnectionID string, msgBytes []byte) error {
 	if c.connection == nil {
-		return fmt.Errorf("connection is not initialized")
+		return fmt.Errorf("internal connection is not initialized")
 	}
 
 	headers := communication.BytesHeader{
@@ -59,7 +59,7 @@ func (c *InternalConnection) Send(externalConnectionID string, msgBytes []byte) 
 }
 
 func (c *InternalConnection) Listen() {
-	log.Printf("New connection: %s", c.connection.RemoteAddr().String())
+	log.Printf("New internal connection: %s", c.connection.RemoteAddr().String())
 	msgBytes := make([]byte, 0)
 	for {
 		b := make([]byte, 1024)
@@ -99,9 +99,9 @@ func (c *InternalConnection) parseBytesMessage(msgBytes []byte) {
 
 	if externalConnectionID, ok := headers[externalConnectionIDKey]; ok {
 		// TODO:
-		log.Printf("response externalnConnectionId: %s", externalConnectionID)
+		log.Printf("response for externalnConnectionId: %s", externalConnectionID)
 	}
-
+	// TODO: other implementation of messaging - base on BytesMessage and headers
 	event, err := c.eventsMapper.Resolve(string(msgBytes))
 	if err != nil {
 		log.Print(err)

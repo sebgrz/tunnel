@@ -7,37 +7,51 @@ import (
 	"proxy/internal/server/connection"
 	"proxy/internal/server/inter"
 	"proxy/internal/server/pack"
+	"sync"
 )
 
 type ExternalListener struct {
 	port                 string
-	connections          map[string]inter.ListenConnection
+	connections          map[string]inter.ListenSendConnection
 	chanAddConnection    chan pack.ChanExternalConnection
 	chanRemoveConnection chan string
 	chanMsgToInternal    chan<- pack.ChanProxyMessageToInternal
 	chanMsgToExternal    <-chan pack.ChanProxyMessageToExternal
 }
 
-func NewExternalListener(port string, chanMsgToInternal chan<- pack.ChanProxyMessageToInternal) *ExternalListener {
+func NewExternalListener(port string, chanMsgToInternal chan<- pack.ChanProxyMessageToInternal, chanMsgToExternal <-chan pack.ChanProxyMessageToExternal) *ExternalListener {
 	l := &ExternalListener{
 		port:                 port,
-		connections:          make(map[string]inter.ListenConnection),
+		connections:          make(map[string]inter.ListenSendConnection),
 		chanAddConnection:    make(chan pack.ChanExternalConnection),
 		chanRemoveConnection: make(chan string),
 		chanMsgToInternal:    chanMsgToInternal,
+		chanMsgToExternal:    chanMsgToExternal,
 	}
 
 	go func() {
+		mu := sync.Mutex{}
 		for {
 			select {
+			case msgToExternal := <-chanMsgToExternal:
+				mu.Lock()
+				if con, ok := l.connections[msgToExternal.ExternalConnectionID]; ok {
+					err := con.Send(msgToExternal.ExternalConnectionID, msgToExternal.Content)
+					if err != nil {
+						log.Print(err)
+					}
+				}
+				mu.Unlock()
 			case addConnection := <-l.chanAddConnection:
 				l.connections[addConnection.ConnectionID] = addConnection.Connection
-				log.Printf("connection: %s added", addConnection.ConnectionID)
+				log.Printf("external connection: %s added", addConnection.ConnectionID)
 			case removeConnection := <-l.chanRemoveConnection:
+				mu.Lock()
 				delete(l.connections, removeConnection)
-				log.Printf("connection: %s removed", removeConnection)
+				mu.Unlock()
+				log.Printf("external connection: %s removed", removeConnection)
 			}
-			log.Printf("connections: %d", len(l.connections))
+			log.Printf("external connections: %d", len(l.connections))
 		}
 	}()
 	return l

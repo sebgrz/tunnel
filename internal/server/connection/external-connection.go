@@ -3,12 +3,14 @@ package connection
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"proxy/internal/server/pack"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/go-uuid"
 )
@@ -18,6 +20,7 @@ type ExternalConnection struct {
 	connection           net.Conn
 	chanRemoveConnection chan<- string
 	chanMsgToInternal    chan<- pack.ChanProxyMessageToInternal
+	chanIncomingMessage  chan []byte
 }
 
 func NewExternalConnection(con net.Conn, chanRemoveConnection chan<- string, chanMsgToInternal chan<- pack.ChanProxyMessageToInternal) *ExternalConnection {
@@ -27,8 +30,18 @@ func NewExternalConnection(con net.Conn, chanRemoveConnection chan<- string, cha
 		connection:           con,
 		chanRemoveConnection: chanRemoveConnection,
 		chanMsgToInternal:    chanMsgToInternal,
+		chanIncomingMessage:  make(chan []byte),
 	}
 	return c
+}
+
+func (c *ExternalConnection) Send(externalConnectionID string, msgBytes []byte) error {
+	if c.connection == nil {
+		return fmt.Errorf("external connection is not initialized")
+	}
+	c.chanIncomingMessage <- msgBytes
+
+	return nil
 }
 
 func (c *ExternalConnection) Listen() {
@@ -66,7 +79,26 @@ func (c *ExternalConnection) Listen() {
 	}
 	log.Printf("End receiving")
 
-	// TODO: wait foe agent response
+	// Response
+	select {
+	// Timeout
+	case <-time.Tick(time.Second * 30):
+		timeoutMessage := `HTTP/1.1 504 Gateway Timeout
+Server: HetaProxy 
+Connection: Closed
+Content-Type: text/html; charset=utf-8`
+		msgBytes = []byte(timeoutMessage)
+		log.Printf("external connection: %s timeout", c.ID)
+		// Message
+	case msg := <-c.chanIncomingMessage:
+		msgBytes = msg
+		log.Printf("external connection: %s incoming message", c.ID)
+	}
+	_, err = c.connection.Write(msgBytes)
+	if err != nil {
+		c.chanRemoveConnection <- c.ID
+		log.Fatal(err)
+	}
 
 	err = c.connection.Close()
 	if err != nil {

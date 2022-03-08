@@ -11,7 +11,7 @@ type ChanInternalConnection struct {
 
 type ChanExternalConnection struct {
 	ConnectionID string
-	Connection   inter.ListenConnection
+	Connection   inter.ListenSendConnection
 }
 
 type ChanProxyMessageToInternal struct {
