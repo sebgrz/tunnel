@@ -31,7 +31,7 @@ func NewInternalListener(port string, chanMsg <-chan pack.ChanProxyMessageToInte
 			case sendMessage := <-chanMsg:
 				mu.Lock()
 				if con, ok := l.connections[sendMessage.Host]; ok {
-					err := con.Send(sendMessage.Content)
+					err := con.Send(sendMessage.ExternalConnectionID, sendMessage.Content)
 					if err != nil {
 						log.Print(err)
 					}

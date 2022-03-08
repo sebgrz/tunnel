@@ -6,22 +6,28 @@ import (
 	"strconv"
 )
 
-type BinaryHeader map[string]string
+type BytesHeader map[string]string
 
-// SerializeBinaryMessage into format: <headers_len>*<bytes_headers><bytes_data>
-func SerializeBinaryMessage(headers BinaryHeader, data []byte) []byte {
-	byteHeaders, _ := json.Marshal(headers)
-	lenByteHeaders := len(byteHeaders)
+// SerializeBytesMessage into format: <headers_len>*<bytes_headers><bytes_data>
+func SerializeBytesMessage(headers BytesHeader, data []byte) []byte {
+	lenByteHeaders := 0
+	var byteHeaders []byte
+	if headers != nil {
+		byteHeaders, _ = json.Marshal(headers)
+		lenByteHeaders = len(byteHeaders)
+	}
 	prefixMsg := []byte(fmt.Sprintf("%d*", lenByteHeaders))
-	prefixMsg = append(prefixMsg, byteHeaders...)
+	if lenByteHeaders != 0 {
+		prefixMsg = append(prefixMsg, byteHeaders...)
+	}
 
 	msg := make([]byte, 0)
 	msg = append(prefixMsg, data...)
 	return msg
 }
 
-// DeserializeBinaryMessage msg in format: <headers_len>*<bytes_headers><bytes_data>
-func DeserializeBinaryMessage(msg []byte) (map[string]string, []byte) {
+// DeserializeBytesMessage msg in format: <headers_len>*<bytes_headers><bytes_data>
+func DeserializeBytesMessage(msg []byte) (map[string]string, []byte) {
 	// 1. headers_len part
 	headerLenBytes := make([]byte, 0)
 	separatorIdx := 0

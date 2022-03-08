@@ -7,11 +7,14 @@ import (
 	"net"
 	"proxy/internal/server/messagehandler"
 	"proxy/internal/server/pack"
+	"proxy/pkg/communication"
 	"proxy/pkg/message"
 
 	"github.com/hashicorp/go-uuid"
 	goeh "github.com/hetacode/go-eh"
 )
+
+const externalConnectionIDKey = "ec_id"
 
 type InternalConnection struct {
 	ID                   string
@@ -36,11 +39,17 @@ func NewInternalConnection(con net.Conn, chanRemoveConnection chan<- string, cha
 	return c
 }
 
-func (c *InternalConnection) Send(msgBytes []byte) error {
+func (c *InternalConnection) Send(externalConnectionID string, msgBytes []byte) error {
 	if c.connection == nil {
 		return fmt.Errorf("connection is not initialized")
 	}
 
+	headers := communication.BytesHeader{
+		// This header should back from agent
+		// Purpose of it is to return response to the correct external connection
+		externalConnectionIDKey: externalConnectionID,
+	}
+	msgBytes = communication.SerializeBytesMessage(headers, msgBytes)
 	_, err := c.connection.Write(msgBytes)
 	if err != nil {
 		return err
@@ -86,6 +95,13 @@ func (c *InternalConnection) SetHost(host string) {
 }
 
 func (c *InternalConnection) parseBytesMessage(msgBytes []byte) {
+	headers, msgBytes := communication.DeserializeBytesMessage(msgBytes)
+
+	if externalConnectionID, ok := headers[externalConnectionIDKey]; ok {
+		// TODO:
+		log.Printf("response externalnConnectionId: %s", externalConnectionID)
+	}
+
 	event, err := c.eventsMapper.Resolve(string(msgBytes))
 	if err != nil {
 		log.Print(err)

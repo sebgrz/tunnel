@@ -1,7 +1,7 @@
 package inter
 
 type SendConnection interface {
-	Send(msgBytes []byte) error
+	Send(externalConnectionID string, msgBytes []byte) error
 }
 
 type ListenConnection interface {
