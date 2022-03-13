@@ -11,13 +11,14 @@ import (
 )
 
 type InternalListener struct {
-	port                 string
-	connections          map[string]inter.ListenSendConnection
-	chanAddConnection    chan pack.ChanInternalConnection
-	chanRemoveConnection chan string
+	port                                  string
+	connections                           map[string]inter.ListenSendConnection
+	chanAddConnection                     chan pack.ChanInternalConnection
+	chanRemoveConnection                  chan string
+	chanReceivedInternalMessageToExternal chan pack.ChanProxyMessageToExternal
 }
 
-func NewInternalListener(port string, chanMsg <-chan pack.ChanProxyMessageToInternal) *InternalListener {
+func NewInternalListener(port string, chanMsgToInternal <-chan pack.ChanProxyMessageToInternal, chanMsgToExternal chan<- pack.ChanProxyMessageToExternal) *InternalListener {
 	l := &InternalListener{
 		port:                 port,
 		connections:          make(map[string]inter.ListenSendConnection),
@@ -28,7 +29,9 @@ func NewInternalListener(port string, chanMsg <-chan pack.ChanProxyMessageToInte
 		mu := sync.Mutex{}
 		for {
 			select {
-			case sendMessage := <-chanMsg:
+			case msgToExternal := <-l.chanReceivedInternalMessageToExternal:
+				chanMsgToExternal <- msgToExternal
+			case sendMessage := <-chanMsgToInternal:
 				mu.Lock()
 				if con, ok := l.connections[sendMessage.Host]; ok {
 					err := con.Send(sendMessage.ExternalConnectionID, sendMessage.Content)
@@ -64,7 +67,7 @@ func (l *InternalListener) Run() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			ec := connection.NewInternalConnection(con, l.chanRemoveConnection, l.chanAddConnection)
+			ec := connection.NewInternalConnection(con, l.chanRemoveConnection, l.chanAddConnection, l.chanReceivedInternalMessageToExternal)
 			go ec.Listen()
 		}
 	}()

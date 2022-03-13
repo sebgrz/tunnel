@@ -22,17 +22,19 @@ type InternalConnection struct {
 	connection           net.Conn
 	chanRemoveConnection chan<- string
 	chanAddConnection    chan<- pack.ChanInternalConnection
+	chanMsgToExternal    chan<- pack.ChanProxyMessageToExternal
 	eventsMapper         *goeh.EventsMapper
 	eventsHandlerManager *goeh.EventsHandlerManager
 }
 
-func NewInternalConnection(con net.Conn, chanRemoveConnection chan<- string, chanAddConnection chan<- pack.ChanInternalConnection) *InternalConnection {
+func NewInternalConnection(con net.Conn, chanRemoveConnection chan<- string, chanAddConnection chan<- pack.ChanInternalConnection, chanMsgToExternal chan<- pack.ChanProxyMessageToExternal) *InternalConnection {
 	id, _ := uuid.GenerateUUID()
 	c := &InternalConnection{
 		ID:                   id,
 		connection:           con,
 		chanRemoveConnection: chanRemoveConnection,
 		chanAddConnection:    chanAddConnection,
+		chanMsgToExternal:    chanMsgToExternal,
 		eventsMapper:         message.NewEventsMapper(),
 	}
 	c.eventsHandlerManager = c.registerMessageHandlers()
@@ -97,17 +99,23 @@ func (c *InternalConnection) SetHost(host string) {
 func (c *InternalConnection) parseBytesMessage(msgBytes []byte) {
 	headers, msgBytes := communication.DeserializeBytesMessage(msgBytes)
 
+	// Case when the message should pass to the external connection
 	if externalConnectionID, ok := headers[externalConnectionIDKey]; ok {
-		// TODO:
 		log.Printf("response for externalnConnectionId: %s", externalConnectionID)
+		msg := pack.ChanProxyMessageToExternal{
+			ExternalConnectionID: externalConnectionID,
+			Content:              msgBytes,
+		}
+		c.chanMsgToExternal <- msg
+	} else {
+		// TODO: other implementation of messaging - base on BytesMessage and headers
+		event, err := c.eventsMapper.Resolve(string(msgBytes))
+		if err != nil {
+			log.Print(err)
+			return
+		}
+		c.eventsHandlerManager.Execute(event)
 	}
-	// TODO: other implementation of messaging - base on BytesMessage and headers
-	event, err := c.eventsMapper.Resolve(string(msgBytes))
-	if err != nil {
-		log.Print(err)
-		return
-	}
-	c.eventsHandlerManager.Execute(event)
 }
 
 func (c *InternalConnection) registerMessageHandlers() *goeh.EventsHandlerManager {
