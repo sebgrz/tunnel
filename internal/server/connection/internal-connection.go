@@ -9,6 +9,7 @@ import (
 	"proxy/internal/server/pack"
 	"proxy/pkg/communication"
 	"proxy/pkg/message"
+	"sync"
 
 	"github.com/hashicorp/go-uuid"
 	goeh "github.com/hetacode/go-eh"
@@ -25,6 +26,7 @@ type InternalConnection struct {
 	chanMsgToExternal    chan<- pack.ChanProxyMessageToExternal
 	eventsMapper         *goeh.EventsMapper
 	eventsHandlerManager *goeh.EventsHandlerManager
+	mutexSendMessage     sync.Mutex
 }
 
 func NewInternalConnection(con net.Conn, chanRemoveConnection chan<- string, chanAddConnection chan<- pack.ChanInternalConnection, chanMsgToExternal chan<- pack.ChanProxyMessageToExternal) *InternalConnection {
@@ -36,6 +38,7 @@ func NewInternalConnection(con net.Conn, chanRemoveConnection chan<- string, cha
 		chanAddConnection:    chanAddConnection,
 		chanMsgToExternal:    chanMsgToExternal,
 		eventsMapper:         message.NewEventsMapper(),
+		mutexSendMessage:     sync.Mutex{},
 	}
 	c.eventsHandlerManager = c.registerMessageHandlers()
 	return c
@@ -45,6 +48,8 @@ func (c *InternalConnection) Send(externalConnectionID string, msgBytes []byte) 
 	if c.connection == nil {
 		return fmt.Errorf("internal connection is not initialized")
 	}
+	c.mutexSendMessage.Lock()
+	defer c.mutexSendMessage.Unlock()
 
 	headers := communication.BytesHeader{
 		// This header should back from agent
