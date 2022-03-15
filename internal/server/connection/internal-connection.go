@@ -104,7 +104,7 @@ func (c *InternalConnection) SetHost(host string) {
 func (c *InternalConnection) parseBytesMessage(msgBytes []byte) {
 	headers, msgBytes := communication.DeserializeBytesMessage(msgBytes)
 
-	// Case when the message should pass to the external connection
+	// Case when the message should be forward to the external connection
 	if externalConnectionID, ok := headers[externalConnectionIDKey]; ok {
 		log.Printf("response for externalnConnectionId: %s", externalConnectionID)
 		msg := pack.ChanProxyMessageToExternal{
