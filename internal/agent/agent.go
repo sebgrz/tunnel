@@ -6,7 +6,9 @@ import (
 	"log"
 	"net"
 	"proxy/internal/agent/http"
+	"proxy/internal/agent/pack"
 	"proxy/pkg/communication"
+	"proxy/pkg/key"
 	"proxy/pkg/message"
 	"time"
 
@@ -14,10 +16,14 @@ import (
 	goeh "github.com/hetacode/go-eh"
 )
 
+type CallDestinationHandler func(headers communication.BytesHeader, msg []byte)
+
 type Agent struct {
 	serverAddress      string
 	hostnameListener   string
 	destinationAddress string
+
+	waitingConnections map[string]CallDestinationHandler
 }
 
 func NewAgent(serverAddress, hostnameListener, destinationAddress string) *Agent {
@@ -42,6 +48,38 @@ func (a *Agent) Start() {
 	time.Sleep(2 * time.Second)
 	con.Write(createAgentRegistrationMessage(uid, a.hostnameListener))
 
+	chanAddProxyConnection := make(chan []byte)
+	chanRemoveProxyConnection := make(chan string)
+	chanSendResponse := make(chan pack.ChanResponseToServer)
+
+	go func() {
+		for {
+			select {
+			case msg := <-chanAddProxyConnection:
+				headers, msgBytes := communication.DeserializeBytesMessage(msg)
+				if connectionID, ok := headers[key.ExternalConnectionIDKey]; ok {
+					handler := func(headers communication.BytesHeader, msg []byte) {
+
+						// 1. Call destination address and wait for response
+						http.Send(a.destinationAddress, msg)
+
+						// TODO
+						// 3. Combine headers and response into bytes message
+						// 4. Send bytes message to the SendResponse channel
+					}
+					a.waitingConnections[connectionID] = handler
+					handler(headers, msgBytes)
+				}
+			case connectionID := <-chanRemoveProxyConnection:
+				delete(a.waitingConnections, connectionID)
+			case response := <-chanSendResponse:
+				// TODO mutexes
+				con.Write(response.ResponseMessage)
+				delete(a.waitingConnections, response.ConnectionID)
+			}
+		}
+	}()
+
 	msgBytes := make([]byte, 0)
 	for {
 		b := make([]byte, 1024)
@@ -52,16 +90,13 @@ func (a *Agent) Start() {
 		}
 		msgBytes = append(msgBytes, b[:bl]...)
 		if bl < len(b) {
-			fmt.Println(string(msgBytes))
 			// TODO: headers
-			_, msgBytes := communication.DeserializeBytesMessage(msgBytes)
+			chanAddProxyConnection <- msgBytes
 
 			msgBytes = make([]byte, 0)
 			// TODO:
-			// 2. save connection in memory
 			// 3. send message in goroutine
 			// 4. receive response and forward to the connection via channel?
-			http.Send(a.destinationAddress, msgBytes)
 			continue
 		}
 	}

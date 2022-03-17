@@ -8,14 +8,13 @@ import (
 	"proxy/internal/server/messagehandler"
 	"proxy/internal/server/pack"
 	"proxy/pkg/communication"
+	"proxy/pkg/key"
 	"proxy/pkg/message"
 	"sync"
 
 	"github.com/hashicorp/go-uuid"
 	goeh "github.com/hetacode/go-eh"
 )
-
-const externalConnectionIDKey = "ec_id"
 
 type InternalConnection struct {
 	ID                   string
@@ -54,7 +53,7 @@ func (c *InternalConnection) Send(externalConnectionID string, msgBytes []byte) 
 	headers := communication.BytesHeader{
 		// This header should back from agent
 		// Purpose of it is to return response to the correct external connection
-		externalConnectionIDKey: externalConnectionID,
+		key.ExternalConnectionIDKey: externalConnectionID,
 	}
 	msgBytes = communication.SerializeBytesMessage(headers, msgBytes)
 	_, err := c.connection.Write(msgBytes)
@@ -105,7 +104,7 @@ func (c *InternalConnection) parseBytesMessage(msgBytes []byte) {
 	headers, msgBytes := communication.DeserializeBytesMessage(msgBytes)
 
 	// Case when the message should be forward to the external connection
-	if externalConnectionID, ok := headers[externalConnectionIDKey]; ok {
+	if externalConnectionID, ok := headers[key.ExternalConnectionIDKey]; ok {
 		log.Printf("response for externalnConnectionId: %s", externalConnectionID)
 		msg := pack.ChanProxyMessageToExternal{
 			ExternalConnectionID: externalConnectionID,
