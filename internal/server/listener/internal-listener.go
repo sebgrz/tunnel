@@ -20,10 +20,11 @@ type InternalListener struct {
 
 func NewInternalListener(port string, chanMsgToInternal <-chan pack.ChanProxyMessageToInternal, chanMsgToExternal chan<- pack.ChanProxyMessageToExternal) *InternalListener {
 	l := &InternalListener{
-		port:                 port,
-		connections:          make(map[string]inter.ListenSendConnection),
-		chanAddConnection:    make(chan pack.ChanInternalConnection),
-		chanRemoveConnection: make(chan string),
+		port:                                  port,
+		connections:                           make(map[string]inter.ListenSendConnection),
+		chanAddConnection:                     make(chan pack.ChanInternalConnection),
+		chanRemoveConnection:                  make(chan string),
+		chanReceivedInternalMessageToExternal: make(chan pack.ChanProxyMessageToExternal),
 	}
 	go func() {
 		mu := sync.Mutex{}

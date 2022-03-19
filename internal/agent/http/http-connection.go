@@ -3,7 +3,9 @@ package http
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"net/http"
+	"net/url"
 )
 
 func Send(destinationAddress string, msg []byte) ([]byte, error) {
@@ -14,8 +16,12 @@ func Send(destinationAddress string, msg []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	request.URL.Host = destinationAddress
-
+	if !request.URL.IsAbs() {
+		request.RequestURI = ""
+		request.URL, _ = url.Parse(fmt.Sprintf("%s%s", destinationAddress, request.URL.Path))
+	} else {
+		request.URL.Host = destinationAddress
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return nil, err

@@ -1,8 +1,6 @@
 package agent
 
 import (
-	"encoding/json"
-	"fmt"
 	"log"
 	"net"
 	"proxy/internal/agent/http"
@@ -10,6 +8,7 @@ import (
 	"proxy/pkg/communication"
 	"proxy/pkg/key"
 	"proxy/pkg/message"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/go-uuid"
@@ -31,6 +30,7 @@ func NewAgent(serverAddress, hostnameListener, destinationAddress string) *Agent
 		serverAddress:      serverAddress,
 		hostnameListener:   hostnameListener,
 		destinationAddress: destinationAddress,
+		waitingConnections: make(map[string]CallDestinationHandler),
 	}
 	return a
 }
@@ -46,36 +46,55 @@ func (a *Agent) Start() {
 	// Send agent registration message
 	// That message register this specific agent on the server side
 	time.Sleep(2 * time.Second)
-	con.Write(createAgentRegistrationMessage(uid, a.hostnameListener))
+	msgRegistrationBytes := communication.SerializeBytesMessage(nil, createAgentRegistrationMessage(uid, a.hostnameListener))
+	con.Write(msgRegistrationBytes)
 
 	chanAddProxyConnection := make(chan []byte)
 	chanRemoveProxyConnection := make(chan string)
 	chanSendResponse := make(chan pack.ChanResponseToServer)
 
 	go func() {
+		responseMutex := sync.Mutex{}
+		removeProxyMutex := sync.Mutex{}
 		for {
 			select {
 			case msg := <-chanAddProxyConnection:
 				headers, msgBytes := communication.DeserializeBytesMessage(msg)
 				if connectionID, ok := headers[key.ExternalConnectionIDKey]; ok {
+					log.Printf("msg received for connection: %s", connectionID)
 					handler := func(headers communication.BytesHeader, msg []byte) {
-
+						// Set up timeout
+						go func(connectionID string) {
+							<-time.Tick(30 * time.Second)
+							chanRemoveProxyConnection <- connectionID
+						}(connectionID)
 						// 1. Call destination address and wait for response
-						http.Send(a.destinationAddress, msg)
-
-						// TODO
+						response, err := http.Send(a.destinationAddress, msg)
+						if err != nil {
+							log.Println(err)
+							return
+						}
 						// 3. Combine headers and response into bytes message
+						responseMsg := communication.SerializeBytesMessage(headers, response)
 						// 4. Send bytes message to the SendResponse channel
+						chanSendResponse <- pack.ChanResponseToServer{
+							ConnectionID:    connectionID,
+							ResponseMessage: responseMsg,
+						}
 					}
 					a.waitingConnections[connectionID] = handler
-					handler(headers, msgBytes)
+					go handler(headers, msgBytes)
 				}
 			case connectionID := <-chanRemoveProxyConnection:
+				removeProxyMutex.Lock()
+				log.Printf("remove connection: %s", connectionID)
 				delete(a.waitingConnections, connectionID)
+				removeProxyMutex.Unlock()
 			case response := <-chanSendResponse:
-				// TODO mutexes
+				responseMutex.Lock()
 				con.Write(response.ResponseMessage)
-				delete(a.waitingConnections, response.ConnectionID)
+				go func() { chanRemoveProxyConnection <- response.ConnectionID }()
+				responseMutex.Unlock()
 			}
 		}
 	}()
@@ -85,18 +104,14 @@ func (a *Agent) Start() {
 		b := make([]byte, 1024)
 		bl, err := con.Read(b)
 		if err != nil {
-			fmt.Printf("err: %s", err)
+			log.Printf("err: %s", err)
 			break
 		}
 		msgBytes = append(msgBytes, b[:bl]...)
 		if bl < len(b) {
-			// TODO: headers
 			chanAddProxyConnection <- msgBytes
 
 			msgBytes = make([]byte, 0)
-			// TODO:
-			// 3. send message in goroutine
-			// 4. receive response and forward to the connection via channel?
 			continue
 		}
 	}
@@ -104,14 +119,15 @@ func (a *Agent) Start() {
 }
 
 func createAgentRegistrationMessage(uid string, hostnameListener string) []byte {
-	msg := message.AgentRegistrationMessage{
+	msg := &message.AgentRegistrationMessage{
 		EventData: &goeh.EventData{
 			ID:            uid,
 			CorrelationID: uid,
 		},
 		Hostname: hostnameListener,
 	}
-	msgBytes, _ := json.Marshal(msg)
+	msg.SavePayload(msg)
+	msgBytes := []byte(msg.GetPayload())
 
 	return msgBytes
 }
