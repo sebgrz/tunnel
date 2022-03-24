@@ -3,6 +3,8 @@ package agent
 import (
 	"log"
 	"net"
+	"proxy/internal/agent/client"
+	"proxy/internal/agent/enum"
 	"proxy/internal/agent/http"
 	"proxy/internal/agent/pack"
 	"proxy/pkg/communication"
@@ -21,16 +23,20 @@ type Agent struct {
 	serverAddress      string
 	hostnameListener   string
 	destinationAddress string
+	connectionType     enum.AgentConnectionType
 
-	waitingConnections map[string]CallDestinationHandler
+	waitingConnections    map[string]CallDestinationHandler
+	persistentConnections map[string]*client.WSClient // TODO: maybe some abstraction - interface for different persistent connections
 }
 
-func NewAgent(serverAddress, hostnameListener, destinationAddress string) *Agent {
+func NewAgent(serverAddress, hostnameListener, destinationAddress string, connectionType enum.AgentConnectionType) *Agent {
 	a := &Agent{
-		serverAddress:      serverAddress,
-		hostnameListener:   hostnameListener,
-		destinationAddress: destinationAddress,
-		waitingConnections: make(map[string]CallDestinationHandler),
+		serverAddress:         serverAddress,
+		hostnameListener:      hostnameListener,
+		destinationAddress:    destinationAddress,
+		connectionType:        connectionType,
+		waitingConnections:    make(map[string]CallDestinationHandler),
+		persistentConnections: make(map[string]*client.WSClient),
 	}
 	return a
 }
@@ -51,10 +57,13 @@ func (a *Agent) Start() {
 
 	chanAddProxyConnection := make(chan []byte)
 	chanRemoveProxyConnection := make(chan string)
+	chanRemoveProxyPersistentConnection := make(chan string)
 	chanSendResponse := make(chan pack.ChanResponseToServer)
+	chanSendPersistentResponse := make(chan pack.ChanResponseToServer)
 
 	go func() {
 		responseMutex := sync.Mutex{}
+		responsePersistentMutex := sync.Mutex{}
 		removeProxyMutex := sync.Mutex{}
 		for {
 			select {
@@ -63,28 +72,62 @@ func (a *Agent) Start() {
 				if connectionID, ok := headers[key.ExternalConnectionIDKey]; ok {
 					log.Printf("msg received for connection: %s", connectionID)
 					handler := func(headers communication.BytesHeader, msg []byte) {
-						// Set up timeout
-						go func(connectionID string) {
-							<-time.Tick(30 * time.Second)
-							chanRemoveProxyConnection <- connectionID
-						}(connectionID)
-						// 1. Call destination address and wait for response
-						response, err := http.Send(a.destinationAddress, msg)
-						if err != nil {
-							log.Println(err)
-							return
-						}
-						// 3. Combine headers and response into bytes message
-						responseMsg := communication.SerializeBytesMessage(headers, response)
-						// 4. Send bytes message to the SendResponse channel
-						chanSendResponse <- pack.ChanResponseToServer{
-							ConnectionID:    connectionID,
-							ResponseMessage: responseMsg,
+						switch a.connectionType {
+						case enum.HTTPAgentConnectionType:
+							// Set up timeout
+							go func(connectionID string) {
+								<-time.Tick(30 * time.Second)
+								chanRemoveProxyConnection <- connectionID
+							}(connectionID)
+							// 1. Call destination address and wait for response
+							response, err := http.Send(a.destinationAddress, msg)
+							if err != nil {
+								log.Println(err)
+								return
+							}
+							// 3. Combine headers and response into bytes message
+							responseMsg := communication.SerializeBytesMessage(headers, response)
+							// 4. Send bytes message to the SendResponse channel
+							chanSendResponse <- pack.ChanResponseToServer{
+								ConnectionID:    connectionID,
+								ResponseMessage: responseMsg,
+							}
+						case enum.WSAgentConnectionType:
+							var persistentConnection *client.WSClient
+							if persistentConnection, ok = a.persistentConnections[connectionID]; !ok {
+								// 1. Create websocket connection to destinationAddress
+								persistentConnection = client.NewWSClient(connectionID, a.destinationAddress, chanSendPersistentResponse, chanRemoveProxyPersistentConnection)
+								// 2. Save connection in map
+								a.persistentConnections[connectionID] = persistentConnection
+								go persistentConnection.Listen()
+							}
+
+							if msgType, ok := headers[key.MessageTypeBytesHeader]; ok {
+								switch msgType {
+								case key.CloseExternalPersistentConnectionMessageType:
+									if conn, ok := a.persistentConnections[connectionID]; ok {
+										conn.Close()
+									}
+								}
+							} else {
+								persistentConnection.Send(msgBytes)
+							}
 						}
 					}
 					a.waitingConnections[connectionID] = handler
 					go handler(headers, msgBytes)
 				}
+			case connectionID := <-chanRemoveProxyPersistentConnection:
+				removeProxyMutex.Lock()
+				log.Printf("remove persistent connection: %s", connectionID)
+				headers := communication.BytesHeader{
+					key.ExternalConnectionIDKey: connectionID,
+					key.MessageTypeBytesHeader:  key.CloseExternalPersistentConnectionMessageType,
+				}
+				respMsgBytes := communication.SerializeBytesMessage(headers, []byte(""))
+				con.Write(respMsgBytes)
+				delete(a.waitingConnections, connectionID)
+				removeProxyMutex.Unlock()
 			case connectionID := <-chanRemoveProxyConnection:
 				removeProxyMutex.Lock()
 				log.Printf("remove connection: %s", connectionID)
@@ -95,6 +138,14 @@ func (a *Agent) Start() {
 				con.Write(response.ResponseMessage)
 				go func() { chanRemoveProxyConnection <- response.ConnectionID }()
 				responseMutex.Unlock()
+			case response := <-chanSendPersistentResponse:
+				responsePersistentMutex.Lock()
+				headers := communication.BytesHeader{
+					key.ExternalConnectionIDKey: response.ConnectionID,
+				}
+				respMsgBytes := communication.SerializeBytesMessage(headers, response.ResponseMessage)
+				con.Write(respMsgBytes)
+				responsePersistentMutex.Unlock()
 			}
 		}
 	}()

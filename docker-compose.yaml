@@ -8,11 +8,20 @@ services:
       - 80:5000
     command: /app/cmd/server
 
-  agent:
+  agent-web:
     build:
       context: .
       dockerfile: Dockerfile
-    command: "/app/cmd/agent -server server:5050 -destination http://web-app:2368"
+    command: "/app/cmd/agent -server server:5050 -hostname proxy.local -destination http://web-app:2368 -type=http"
+    depends_on:
+      - server
+    restart: on-failure
+
+  agent-ws:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: "/app/cmd/agent -server server:5050 -hostname ws.proxy.local -destination ws://ws-app:8010 -type=ws"
     depends_on:
       - server
     restart: on-failure
@@ -21,4 +30,6 @@ services:
     image: ghost 
     environment:
       - "url=http://proxy.local"
-
+  
+  ws-app:
+    image: ksdn117/web-socket-test

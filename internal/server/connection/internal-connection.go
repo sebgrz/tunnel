@@ -17,27 +17,29 @@ import (
 )
 
 type InternalConnection struct {
-	ID                   string
-	Host                 string
-	connection           net.Conn
-	chanRemoveConnection chan<- string
-	chanAddConnection    chan<- pack.ChanInternalConnection
-	chanMsgToExternal    chan<- pack.ChanProxyMessageToExternal
-	eventsMapper         *goeh.EventsMapper
-	eventsHandlerManager *goeh.EventsHandlerManager
-	mutexSendMessage     sync.Mutex
+	ID                          string
+	Host                        string
+	connection                  net.Conn
+	chanRemoveConnection        chan<- string
+	chanCloseExternalConnection chan<- string
+	chanAddConnection           chan<- pack.ChanInternalConnection
+	chanMsgToExternal           chan<- pack.ChanProxyMessageToExternal
+	eventsMapper                *goeh.EventsMapper
+	eventsHandlerManager        *goeh.EventsHandlerManager
+	mutexSendMessage            sync.Mutex
 }
 
-func NewInternalConnection(con net.Conn, chanRemoveConnection chan<- string, chanAddConnection chan<- pack.ChanInternalConnection, chanMsgToExternal chan<- pack.ChanProxyMessageToExternal) *InternalConnection {
+func NewInternalConnection(con net.Conn, chanRemoveConnection chan<- string, chanCloseExternalConnection chan<- string, chanAddConnection chan<- pack.ChanInternalConnection, chanMsgToExternal chan<- pack.ChanProxyMessageToExternal) *InternalConnection {
 	id, _ := uuid.GenerateUUID()
 	c := &InternalConnection{
-		ID:                   id,
-		connection:           con,
-		chanRemoveConnection: chanRemoveConnection,
-		chanAddConnection:    chanAddConnection,
-		chanMsgToExternal:    chanMsgToExternal,
-		eventsMapper:         message.NewEventsMapper(),
-		mutexSendMessage:     sync.Mutex{},
+		ID:                          id,
+		connection:                  con,
+		chanRemoveConnection:        chanRemoveConnection,
+		chanCloseExternalConnection: chanCloseExternalConnection,
+		chanAddConnection:           chanAddConnection,
+		chanMsgToExternal:           chanMsgToExternal,
+		eventsMapper:                message.NewEventsMapper(),
+		mutexSendMessage:            sync.Mutex{},
 	}
 	c.eventsHandlerManager = c.registerMessageHandlers()
 	return c
@@ -92,6 +94,28 @@ func (c *InternalConnection) Listen() {
 	c.chanRemoveConnection <- c.Host
 }
 
+func (c *InternalConnection) SendWithHeaders(externalConnectionID string, headers communication.BytesHeader, msgBytes []byte) error {
+	if c.connection == nil {
+		return fmt.Errorf("internal connection is not initialized")
+	}
+	if headers == nil {
+		return fmt.Errorf("headers parameter is nil")
+	}
+
+	c.mutexSendMessage.Lock()
+	defer c.mutexSendMessage.Unlock()
+
+	headers[key.ExternalConnectionIDKey] = externalConnectionID
+
+	msgBytes = communication.SerializeBytesMessage(headers, msgBytes)
+	_, err := c.connection.Write(msgBytes)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *InternalConnection) SetHost(host string) {
 	c.Host = host
 	c.chanAddConnection <- pack.ChanInternalConnection{
@@ -103,8 +127,15 @@ func (c *InternalConnection) SetHost(host string) {
 func (c *InternalConnection) parseBytesMessage(msgBytes []byte) {
 	headers, msgBytes := communication.DeserializeBytesMessage(msgBytes)
 
-	// Case when the message should be forward to the external connection
-	if externalConnectionID, ok := headers[key.ExternalConnectionIDKey]; ok {
+	if messageType, ok := headers[key.MessageTypeBytesHeader]; ok {
+		switch messageType {
+		case key.CloseExternalPersistentConnectionMessageType:
+			connectionID, _ := headers[key.ExternalConnectionIDKey]
+			log.Printf("close connection: %s", connectionID)
+			c.chanCloseExternalConnection <- connectionID
+		}
+	} else if externalConnectionID, ok := headers[key.ExternalConnectionIDKey]; ok {
+		// Case when the message should be forward to the external connection
 		log.Printf("response for externalnConnectionId: %s", externalConnectionID)
 		msg := pack.ChanProxyMessageToExternal{
 			ExternalConnectionID: externalConnectionID,

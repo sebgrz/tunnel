@@ -17,10 +17,14 @@ func NewServer(externalPort string, advertisingAgentPort string) *Server {
 	chanMsgToInternal := make(chan pack.ChanProxyMessageToInternal)
 	// response message -> web server -> agent -> internal connection -> internal listener -> external listener -> external connection -> client
 	chanMsgToExternal := make(chan pack.ChanProxyMessageToExternal)
+	// inform external connection that agent <-> destination connection is closed (persistent case)
+	chanAgentConnectionClosedToExternal := make(chan string)
+	// inform agent <-> destination connection that external connection is closed (persistent case)
+	chanExternalConnectionClosedToAgent := make(chan string)
 	s := &Server{
 		chanMsgToInternal: chanMsgToInternal,
-		intListener:       listener.NewInternalListener(advertisingAgentPort, chanMsgToInternal, chanMsgToExternal),
-		extListener:       listener.NewExternalListener(externalPort, chanMsgToInternal, chanMsgToExternal),
+		intListener:       listener.NewInternalListener(advertisingAgentPort, chanMsgToInternal, chanMsgToExternal, chanAgentConnectionClosedToExternal),
+		extListener:       listener.NewExternalListener(externalPort, chanMsgToInternal, chanMsgToExternal, chanAgentConnectionClosedToExternal, chanExternalConnectionClosedToAgent),
 	}
 	return s
 }

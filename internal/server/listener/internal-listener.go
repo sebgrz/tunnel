@@ -5,26 +5,36 @@ import (
 	"log"
 	"net"
 	"proxy/internal/server/connection"
+	"proxy/internal/server/enum"
 	"proxy/internal/server/inter"
 	"proxy/internal/server/pack"
+	"proxy/pkg/communication"
+	"proxy/pkg/key"
 	"sync"
 )
 
 type InternalListener struct {
 	port                                  string
-	connections                           map[string]inter.ListenSendConnection
+	connections                           map[string]inter.ListenSendWithHeadersConnection
 	chanAddConnection                     chan pack.ChanInternalConnection
 	chanRemoveConnection                  chan string
+	chanCloseExternalConnection           chan<- string
 	chanReceivedInternalMessageToExternal chan pack.ChanProxyMessageToExternal
 }
 
-func NewInternalListener(port string, chanMsgToInternal <-chan pack.ChanProxyMessageToInternal, chanMsgToExternal chan<- pack.ChanProxyMessageToExternal) *InternalListener {
+func NewInternalListener(
+	port string,
+	chanMsgToInternal <-chan pack.ChanProxyMessageToInternal,
+	chanMsgToExternal chan<- pack.ChanProxyMessageToExternal,
+	chanCloseExternalConnection chan<- string,
+) *InternalListener {
 	l := &InternalListener{
 		port:                                  port,
-		connections:                           make(map[string]inter.ListenSendConnection),
+		connections:                           make(map[string]inter.ListenSendWithHeadersConnection),
 		chanAddConnection:                     make(chan pack.ChanInternalConnection),
 		chanRemoveConnection:                  make(chan string),
 		chanReceivedInternalMessageToExternal: make(chan pack.ChanProxyMessageToExternal),
+		chanCloseExternalConnection:           chanCloseExternalConnection,
 	}
 	go func() {
 		mu := sync.Mutex{}
@@ -35,9 +45,20 @@ func NewInternalListener(port string, chanMsgToInternal <-chan pack.ChanProxyMes
 			case sendMessage := <-chanMsgToInternal:
 				mu.Lock()
 				if con, ok := l.connections[sendMessage.Host]; ok {
-					err := con.Send(sendMessage.ExternalConnectionID, sendMessage.Content)
-					if err != nil {
-						log.Print(err)
+					switch sendMessage.Type {
+					case enum.MessageExternalToInternalMessageType:
+						err := con.Send(sendMessage.ExternalConnectionID, sendMessage.Content)
+						if err != nil {
+							log.Print(err)
+						}
+					case enum.CloseConnectionExternalToInternalMessageType:
+						headers := communication.BytesHeader{
+							key.MessageTypeBytesHeader: key.CloseExternalPersistentConnectionMessageType,
+						}
+						err := con.SendWithHeaders(sendMessage.ExternalConnectionID, headers, sendMessage.Content)
+						if err != nil {
+							log.Print(err)
+						}
 					}
 				}
 				mu.Unlock()
@@ -68,7 +89,7 @@ func (l *InternalListener) Run() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			ec := connection.NewInternalConnection(con, l.chanRemoveConnection, l.chanAddConnection, l.chanReceivedInternalMessageToExternal)
+			ec := connection.NewInternalConnection(con, l.chanRemoveConnection, l.chanCloseExternalConnection, l.chanAddConnection, l.chanReceivedInternalMessageToExternal)
 			go ec.Listen()
 		}
 	}()
