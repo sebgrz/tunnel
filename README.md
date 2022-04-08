@@ -17,4 +17,11 @@ And now you can switch to your web browser and check `proxy.local` url.
 That should show **ghost** application which is not expose directly to the host machine but only via tunnel inside docker network.
 
 If you have any tool to test websocket connection you can connect to the internal testing websocket server 
-via the same hostname: `ws.proxy.local`.
+via the same hostname: `proxy.local`.
+
+## SSL
+Run `generate-self-signed-ssl.sh` script inside `/ssl` directory in order to generate self-signed certificate for `proxy.local` domain.  
+Script base on this article [How to create an HTTPS certificate for localhost domains](https://gist.github.com/cecilemuller/9492b848eb8fe46d462abeb26656c4f8)  
+These certificats are use by docker compose setup with nginx proxy on top, so the script should be run before `docker-compose up`. All of these give you ability to run example project over https/wss protocols.
+
+> Important! You have to add RootCA.crt to your web browser certificate authority in order to not encounter NOT_VALID_CERTIFICATE error.

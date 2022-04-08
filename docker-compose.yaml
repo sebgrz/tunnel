@@ -1,12 +1,24 @@
 version: "3.9"
 services:
+
+  # nginx-proxy:
+  #   build:
+  #     context: .
+  #     dockerfile: nginx.Dockerfile
+  #   ports:
+  #     - 443:443
+  #   volumes:
+  #     - $PWD/ssl:/etc/nginx/certs
+
   server:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - 80:5000
-    command: /app/cmd/server
+      - 443:443
+    command: "/app/cmd/server -config /config/server-config.json -port-ssl 443"
+    volumes:
+      - $PWD/ssl:/config
 
   agent-web:
     build:
