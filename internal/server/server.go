@@ -1,6 +1,7 @@
 package server
 
 import (
+	"proxy/internal/server/configuration"
 	"proxy/internal/server/listener"
 	"proxy/internal/server/pack"
 )
@@ -12,7 +13,7 @@ type Server struct {
 	chanMsgToExternal chan pack.ChanProxyMessageToExternal
 }
 
-func NewServer(externalPort string, advertisingAgentPort string) *Server {
+func NewServer(config *configuration.Configuration, externalPort, externalSslPort, advertisingAgentPort string) *Server {
 	// request message client -> <request> -> external connection -> external listener -> internal listener -> internal connection -> agent -> web server
 	chanMsgToInternal := make(chan pack.ChanProxyMessageToInternal)
 	// response message -> web server -> agent -> internal connection -> internal listener -> external listener -> external connection -> client
@@ -24,7 +25,7 @@ func NewServer(externalPort string, advertisingAgentPort string) *Server {
 	s := &Server{
 		chanMsgToInternal: chanMsgToInternal,
 		intListener:       listener.NewInternalListener(advertisingAgentPort, chanMsgToInternal, chanMsgToExternal, chanAgentConnectionClosedToExternal),
-		extListener:       listener.NewExternalListener(externalPort, chanMsgToInternal, chanMsgToExternal, chanAgentConnectionClosedToExternal, chanExternalConnectionClosedToAgent),
+		extListener:       listener.NewExternalListener(config, externalPort, externalSslPort, chanMsgToInternal, chanMsgToExternal, chanAgentConnectionClosedToExternal, chanExternalConnectionClosedToAgent),
 	}
 	return s
 }

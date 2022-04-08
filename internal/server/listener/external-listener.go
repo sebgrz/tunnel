@@ -3,21 +3,26 @@ package listener
 import (
 	"bufio"
 	"bytes"
-	"fmt"
+	"crypto/tls"
 	"log"
 	"net"
 	"net/http"
+	"proxy/internal/server/configuration"
 	"proxy/internal/server/connection"
 	"proxy/internal/server/enum"
 	"proxy/internal/server/inter"
 	"proxy/internal/server/pack"
 	"proxy/pkg/helper"
 	"proxy/pkg/key"
+	pkgnet "proxy/pkg/net"
+	"strings"
 	"sync"
 )
 
 type ExternalListener struct {
+	config               *configuration.Configuration
 	port                 string
+	sslPort              string
 	connections          map[string]inter.ExternalConnection
 	chanAddConnection    chan pack.ChanExternalConnection
 	chanRemoveConnection chan string
@@ -26,14 +31,18 @@ type ExternalListener struct {
 }
 
 func NewExternalListener(
+	config *configuration.Configuration,
 	port string,
+	sslPort string,
 	chanMsgToInternal chan<- pack.ChanProxyMessageToInternal,
 	chanMsgToExternal <-chan pack.ChanProxyMessageToExternal,
 	chanAgentConnectionClosedToExternal <-chan string,
 	chanExternalConnectionClosedToAgent chan<- string,
 ) *ExternalListener {
 	l := &ExternalListener{
+		config:               config,
 		port:                 port,
+		sslPort:              sslPort,
 		connections:          make(map[string]inter.ExternalConnection),
 		chanAddConnection:    make(chan pack.ChanExternalConnection),
 		chanRemoveConnection: make(chan string),
@@ -90,46 +99,63 @@ func NewExternalListener(
 }
 
 func (l *ExternalListener) Run() {
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", l.port))
-	if err != nil {
-		log.Fatal(err)
+	listen := func(con net.Conn) {
+		connType, firstRecvBytes, recognizedRequest, err := recognizeConnectionType(con)
+
+		if err != nil {
+			log.Println(err)
+		}
+
+		log.Println(connType)
+
+		var externalConnection inter.ExternalConnection
+		switch connType {
+		case connection.HTTPExternalConnectionType:
+			externalConnection = connection.NewHTTPExternalConnection(con, l.chanRemoveConnection, l.chanMsgToInternal)
+			l.chanAddConnection <- pack.ChanExternalConnection{
+				ConnectionID: externalConnection.GetID(),
+				Connection:   externalConnection,
+			}
+		case connection.WSExternalConnectionType:
+			externalConnection = connection.NewWSExternalConnection(con, l.chanRemoveConnection, l.chanMsgToInternal)
+			l.chanAddConnection <- pack.ChanExternalConnection{
+				ConnectionID: externalConnection.GetID(),
+				Connection:   externalConnection,
+			}
+		}
+		externalConnection.InitialData(&inter.ExternalConnectionInitialData{
+			MsgBytes: firstRecvBytes,
+			Request:  recognizedRequest,
+		})
+		go externalConnection.Listen()
 	}
 
-	go func() {
-		for {
-			con, err := listener.Accept()
-			log.Printf("%v %v", con.LocalAddr(), con.RemoteAddr())
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			connType, firstRecvBytes, recognizedRequest, err := recognizeConnectionType(con)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			var externalConnection inter.ExternalConnection
-			switch connType {
-			case connection.HTTPExternalConnectionType:
-				externalConnection = connection.NewHTTPExternalConnection(con, l.chanRemoveConnection, l.chanMsgToInternal)
-				l.chanAddConnection <- pack.ChanExternalConnection{
-					ConnectionID: externalConnection.GetID(),
-					Connection:   externalConnection,
-				}
-			case connection.WSExternalConnectionType:
-				externalConnection = connection.NewWSExternalConnection(con, l.chanRemoveConnection, l.chanMsgToInternal)
-				l.chanAddConnection <- pack.ChanExternalConnection{
-					ConnectionID: externalConnection.GetID(),
-					Connection:   externalConnection,
-				}
-			}
-			externalConnection.InitialData(&inter.ExternalConnectionInitialData{
-				MsgBytes: firstRecvBytes,
-				Request:  recognizedRequest,
-			})
-			go externalConnection.Listen()
+	// Unencrypted traffic
+	if l.port != "" {
+		if err := pkgnet.ConfigureAndListen(l.port, false, nil, listen); err != nil {
+			log.Fatal(err)
 		}
-	}()
+	}
+	// Encrypted traffic
+	if l.sslPort != "" {
+		if l.config == nil || l.config.Certificates == nil {
+			log.Fatal("configuration is empty")
+		}
+
+		certificates := []tls.Certificate{}
+		for _, certConfig := range l.config.Certificates {
+			cer, err := tls.LoadX509KeyPair(certConfig.CertPath, certConfig.CertKeyPath)
+			if err != nil {
+				log.Fatal(err)
+			}
+			certificates = append(certificates, cer)
+		}
+
+		sslConfig := &tls.Config{Certificates: certificates}
+		if err := pkgnet.ConfigureAndListen(l.sslPort, true, sslConfig, listen); err != nil {
+			log.Fatal(err)
+		}
+	}
 }
 
 func recognizeConnectionType(conn net.Conn) (connection.ExternalConnectionType, *[]byte, *http.Request, error) {
@@ -140,12 +166,12 @@ func recognizeConnectionType(conn net.Conn) (connection.ExternalConnectionType, 
 	br := bufio.NewReader(bytes.NewReader(msgBytes))
 	request, err := http.ReadRequest(br)
 	if err != nil {
-		log.Fatal(err)
+		return -1, nil, nil, err
 	}
 	connectionHeader := request.Header.Get(key.ConnectionHTTPHeader)
 	upgradeHeader := request.Header.Get(key.UpgradeHTTPHeader)
 
-	if connectionHeader == "Upgrade" && upgradeHeader == "websocket" {
+	if strings.ToLower(connectionHeader) == "upgrade" && strings.ToLower(upgradeHeader) == "websocket" {
 		return connection.WSExternalConnectionType, &msgBytes, request, nil
 	}
 	return connection.HTTPExternalConnectionType, &msgBytes, request, nil

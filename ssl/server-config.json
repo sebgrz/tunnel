@@ -1,0 +1,8 @@
+{
+  "certificates": [
+    {
+      "cert_path": "/config/localhost.crt",
+      "cert_key_path": "/config/localhost.key"
+    }
+  ]
+}
