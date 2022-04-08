@@ -11,13 +11,15 @@ import (
 	"proxy/pkg/communication"
 	"proxy/pkg/key"
 	"sync"
+
+	pkgenum "proxy/pkg/enum"
 )
 
 type InternalListener struct {
 	port                                  string
 	connections                           map[string]inter.ListenSendWithHeadersConnection
 	chanAddConnection                     chan pack.ChanInternalConnection
-	chanRemoveConnection                  chan string
+	chanRemoveConnection                  chan pack.ChanInternalConnectionSpec
 	chanCloseExternalConnection           chan<- string
 	chanReceivedInternalMessageToExternal chan pack.ChanProxyMessageToExternal
 }
@@ -32,7 +34,7 @@ func NewInternalListener(
 		port:                                  port,
 		connections:                           make(map[string]inter.ListenSendWithHeadersConnection),
 		chanAddConnection:                     make(chan pack.ChanInternalConnection),
-		chanRemoveConnection:                  make(chan string),
+		chanRemoveConnection:                  make(chan pack.ChanInternalConnectionSpec),
 		chanReceivedInternalMessageToExternal: make(chan pack.ChanProxyMessageToExternal),
 		chanCloseExternalConnection:           chanCloseExternalConnection,
 	}
@@ -44,8 +46,8 @@ func NewInternalListener(
 				chanMsgToExternal <- msgToExternal
 			case sendMessage := <-chanMsgToInternal:
 				mu.Lock()
-				if con, ok := l.connections[sendMessage.Host]; ok {
-					switch sendMessage.Type {
+				if con, ok := l.connections[mapKey(sendMessage.ConnectionType, sendMessage.Host)]; ok {
+					switch sendMessage.MessageType {
 					case enum.MessageExternalToInternalMessageType:
 						err := con.Send(sendMessage.ExternalConnectionID, sendMessage.Content)
 						if err != nil {
@@ -63,15 +65,15 @@ func NewInternalListener(
 				}
 				mu.Unlock()
 			case addConnection := <-l.chanAddConnection:
-				l.connections[addConnection.Host] = addConnection.Connection
-				log.Printf("internal connection: %s added", addConnection.Host)
+				l.connections[mapKey(addConnection.ConnectionType, addConnection.Host)] = addConnection.Connection
+				log.Printf("internal connection: %s of type [%s] added", addConnection.Host, addConnection.ConnectionType)
 			case removeConnection := <-l.chanRemoveConnection:
 				mu.Lock()
-				delete(l.connections, removeConnection)
-				log.Printf("internal connection: %s removed", removeConnection)
+				delete(l.connections, mapKey(removeConnection.ConnectionType, removeConnection.Host))
+				log.Printf("internal connection: %s of type [%s] removed", removeConnection, "TYPE")
 				mu.Unlock()
 			}
-			log.Printf("internal connections: %d", len(l.connections))
+			log.Printf("internal connections number: %d", len(l.connections))
 		}
 	}()
 	return l
@@ -93,4 +95,8 @@ func (l *InternalListener) Run() {
 			go ec.Listen()
 		}
 	}()
+}
+
+func mapKey(connectionType pkgenum.AgentConnectionType, hostname string) string {
+	return fmt.Sprintf("%s_%s", connectionType, hostname)
 }

@@ -10,6 +10,7 @@ import (
 	"proxy/internal/server/enum"
 	"proxy/internal/server/inter"
 	"proxy/internal/server/pack"
+	pkgenum "proxy/pkg/enum"
 	"proxy/pkg/helper"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ import (
 type HTTPExternalConnection struct {
 	ID                   string
 	host                 string
+	connectionType       pkgenum.AgentConnectionType
 	connection           net.Conn
 	initialData          *inter.ExternalConnectionInitialData
 	chanRemoveConnection chan<- string
@@ -31,6 +33,7 @@ func NewHTTPExternalConnection(con net.Conn, chanRemoveConnection chan<- string,
 	id, _ := uuid.GenerateUUID()
 	c := &HTTPExternalConnection{
 		ID:                   id,
+		connectionType:       pkgenum.HTTPAgentConnectionType,
 		connection:           con,
 		chanRemoveConnection: chanRemoveConnection,
 		chanMsgToInternal:    chanMsgToInternal,
@@ -83,7 +86,8 @@ func (c *HTTPExternalConnection) Listen() {
 	c.chanMsgToInternal <- pack.ChanProxyMessageToInternal{
 		ExternalConnectionID: c.ID,
 		Host:                 hostArr[0],
-		Type:                 enum.MessageExternalToInternalMessageType,
+		ConnectionType:       c.connectionType,
+		MessageType:          enum.MessageExternalToInternalMessageType,
 		Content:              msgBytes,
 	}
 	log.Printf("End receiving")
@@ -133,4 +137,8 @@ func (c *HTTPExternalConnection) Close() {
 	if c.connection != nil {
 		c.connection.Close()
 	}
+}
+
+func (c *HTTPExternalConnection) GetConnectionType() pkgenum.AgentConnectionType {
+	return c.connectionType
 }

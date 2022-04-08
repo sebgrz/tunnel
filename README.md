@@ -8,7 +8,6 @@ To run example project you have to at first set hostnames in `hosts` file:
 On linux add:   
 ```
 proxy.local  localhost
-ws.proxy.local  localhost
 ```
 to the `/etc/hosts` file.
 
@@ -18,4 +17,4 @@ And now you can switch to your web browser and check `proxy.local` url.
 That should show **ghost** application which is not expose directly to the host machine but only via tunnel inside docker network.
 
 If you have any tool to test websocket connection you can connect to the internal testing websocket server 
-via `ws.proxy.local` hostname.
+via the same hostname: `ws.proxy.local`.

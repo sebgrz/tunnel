@@ -4,7 +4,7 @@ import (
 	"log"
 	"net"
 	"proxy/internal/agent/client"
-	"proxy/internal/agent/enum"
+	"proxy/pkg/enum"
 	"proxy/internal/agent/http"
 	"proxy/internal/agent/pack"
 	"proxy/pkg/communication"
@@ -52,7 +52,7 @@ func (a *Agent) Start() {
 	// Send agent registration message
 	// That message register this specific agent on the server side
 	time.Sleep(2 * time.Second)
-	msgRegistrationBytes := communication.SerializeBytesMessage(nil, createAgentRegistrationMessage(uid, a.hostnameListener))
+	msgRegistrationBytes := communication.SerializeBytesMessage(nil, createAgentRegistrationMessage(uid, a.hostnameListener, a.connectionType))
 	con.Write(msgRegistrationBytes)
 
 	chanAddProxyConnection := make(chan []byte)
@@ -169,13 +169,14 @@ func (a *Agent) Start() {
 	con.Close()
 }
 
-func createAgentRegistrationMessage(uid string, hostnameListener string) []byte {
+func createAgentRegistrationMessage(uid string, hostnameListener string, connectionType enum.AgentConnectionType) []byte {
 	msg := &message.AgentRegistrationMessage{
 		EventData: &goeh.EventData{
 			ID:            uid,
 			CorrelationID: uid,
 		},
 		Hostname: hostnameListener,
+		ConnectionType: connectionType,
 	}
 	msg.SavePayload(msg)
 	msgBytes := []byte(msg.GetPayload())

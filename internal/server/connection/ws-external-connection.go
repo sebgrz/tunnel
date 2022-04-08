@@ -10,6 +10,7 @@ import (
 	"proxy/internal/server/enum"
 	"proxy/internal/server/inter"
 	"proxy/internal/server/pack"
+	pkgenum "proxy/pkg/enum"
 	"proxy/pkg/helper"
 	proxynet "proxy/pkg/net"
 	"strings"
@@ -20,6 +21,7 @@ import (
 
 type WSExternalConnection struct {
 	ID                   string
+	connectionType       pkgenum.AgentConnectionType
 	host                 string
 	connection           net.Conn
 	wsConnection         *websocket.Conn
@@ -32,6 +34,7 @@ func NewWSExternalConnection(con net.Conn, chanRemoveConnection chan<- string, c
 	id, _ := uuid.GenerateUUID()
 	c := &WSExternalConnection{
 		ID:                   id,
+		connectionType:       pkgenum.WSAgentConnectionType,
 		connection:           con,
 		chanRemoveConnection: chanRemoveConnection,
 		chanMsgToInternal:    chanMsgToInternal,
@@ -110,7 +113,8 @@ func (c *WSExternalConnection) Listen() {
 		c.chanMsgToInternal <- pack.ChanProxyMessageToInternal{
 			ExternalConnectionID: c.ID,
 			Host:                 hostArr[0],
-			Type:                 enum.MessageExternalToInternalMessageType,
+			ConnectionType:       c.connectionType,
+			MessageType:          enum.MessageExternalToInternalMessageType,
 			Content:              msg,
 		}
 	}
@@ -135,4 +139,8 @@ func (c *WSExternalConnection) Close() {
 		log.Printf("WSExternalConnection close: %s", c.ID)
 		c.connection.Close()
 	}
+}
+
+func (c *WSExternalConnection) GetConnectionType() pkgenum.AgentConnectionType {
+	return c.connectionType
 }

@@ -4,7 +4,7 @@ import (
 	"flag"
 	"log"
 	"proxy/internal/agent"
-	"proxy/internal/agent/enum"
+	"proxy/pkg/enum"
 )
 
 var (

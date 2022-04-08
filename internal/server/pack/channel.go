@@ -3,11 +3,18 @@ package pack
 import (
 	"proxy/internal/server/enum"
 	"proxy/internal/server/inter"
+	pkgenum "proxy/pkg/enum"
 )
 
+type ChanInternalConnectionSpec struct {
+	Host           string
+	ConnectionType pkgenum.AgentConnectionType
+}
+
 type ChanInternalConnection struct {
-	Host       string
-	Connection inter.ListenSendWithHeadersConnection
+	Host           string
+	ConnectionType pkgenum.AgentConnectionType
+	Connection     inter.ListenSendWithHeadersConnection
 }
 
 type ChanExternalConnection struct {
@@ -18,7 +25,8 @@ type ChanExternalConnection struct {
 type ChanProxyMessageToInternal struct {
 	ExternalConnectionID string
 	Host                 string
-	Type                 enum.ExternalToInternalMessageType
+	ConnectionType       pkgenum.AgentConnectionType
+	MessageType          enum.ExternalToInternalMessageType
 	Content              []byte
 }
 

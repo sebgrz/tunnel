@@ -21,7 +21,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: "/app/cmd/agent -server server:5050 -hostname ws.proxy.local -destination ws://ws-app:8010 -type=ws"
+    command: "/app/cmd/agent -server server:5050 -hostname proxy.local -destination ws://ws-app:8010 -type=ws"
     depends_on:
       - server
     restart: on-failure

@@ -64,7 +64,8 @@ func NewExternalListener(
 						l.chanMsgToInternal <- pack.ChanProxyMessageToInternal{
 							ExternalConnectionID: externalConnection.GetID(),
 							Host:                 externalConnection.GetHost(),
-							Type:                 enum.CloseConnectionExternalToInternalMessageType,
+							ConnectionType:       externalConnection.GetConnectionType(),
+							MessageType:          enum.CloseConnectionExternalToInternalMessageType,
 							Content:              []byte(""),
 						}
 					}(con)

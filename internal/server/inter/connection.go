@@ -3,6 +3,7 @@ package inter
 import (
 	"net/http"
 	"proxy/pkg/communication"
+	"proxy/pkg/enum"
 )
 
 type ExternalConnectionInitialData struct {
@@ -22,6 +23,10 @@ type ListenConnection interface {
 	Listen()
 }
 
+type ConfigurableConnection interface {
+	Configure(hostname string, connectionType enum.AgentConnectionType)
+}
+
 type ListenSendConnection interface {
 	SendConnection
 	ListenConnection
@@ -38,5 +43,6 @@ type ExternalConnection interface {
 	GetHost
 	InitialData(data *ExternalConnectionInitialData)
 	GetID() string
+	GetConnectionType() enum.AgentConnectionType
 	Close()
 }

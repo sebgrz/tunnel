@@ -8,6 +8,7 @@ import (
 	"proxy/internal/server/messagehandler"
 	"proxy/internal/server/pack"
 	"proxy/pkg/communication"
+	"proxy/pkg/enum"
 	"proxy/pkg/key"
 	"proxy/pkg/message"
 	"sync"
@@ -19,8 +20,9 @@ import (
 type InternalConnection struct {
 	ID                          string
 	Host                        string
+	Type                        enum.AgentConnectionType
 	connection                  net.Conn
-	chanRemoveConnection        chan<- string
+	chanRemoveConnection        chan<- pack.ChanInternalConnectionSpec
 	chanCloseExternalConnection chan<- string
 	chanAddConnection           chan<- pack.ChanInternalConnection
 	chanMsgToExternal           chan<- pack.ChanProxyMessageToExternal
@@ -29,7 +31,7 @@ type InternalConnection struct {
 	mutexSendMessage            sync.Mutex
 }
 
-func NewInternalConnection(con net.Conn, chanRemoveConnection chan<- string, chanCloseExternalConnection chan<- string, chanAddConnection chan<- pack.ChanInternalConnection, chanMsgToExternal chan<- pack.ChanProxyMessageToExternal) *InternalConnection {
+func NewInternalConnection(con net.Conn, chanRemoveConnection chan<- pack.ChanInternalConnectionSpec, chanCloseExternalConnection chan<- string, chanAddConnection chan<- pack.ChanInternalConnection, chanMsgToExternal chan<- pack.ChanProxyMessageToExternal) *InternalConnection {
 	id, _ := uuid.GenerateUUID()
 	c := &InternalConnection{
 		ID:                          id,
@@ -77,7 +79,10 @@ func (c *InternalConnection) Listen() {
 				msgBytes = make([]byte, 0)
 				break
 			}
-			c.chanRemoveConnection <- c.Host
+			c.chanRemoveConnection <- pack.ChanInternalConnectionSpec{
+				Host:           c.Host,
+				ConnectionType: c.Type,
+			}
 			log.Print(err)
 			break
 		}
@@ -91,7 +96,10 @@ func (c *InternalConnection) Listen() {
 	}
 	log.Printf("End receiving")
 	c.connection.Close()
-	c.chanRemoveConnection <- c.Host
+	c.chanRemoveConnection <- pack.ChanInternalConnectionSpec{
+		Host:           c.Host,
+		ConnectionType: c.Type,
+	}
 }
 
 func (c *InternalConnection) SendWithHeaders(externalConnectionID string, headers communication.BytesHeader, msgBytes []byte) error {
@@ -116,11 +124,13 @@ func (c *InternalConnection) SendWithHeaders(externalConnectionID string, header
 	return nil
 }
 
-func (c *InternalConnection) SetHost(host string) {
-	c.Host = host
+func (c *InternalConnection) Configure(hostname string, connectionType enum.AgentConnectionType) {
+	c.Host = hostname
+	c.Type = connectionType
 	c.chanAddConnection <- pack.ChanInternalConnection{
-		Host:       host,
-		Connection: c,
+		Host:           hostname,
+		ConnectionType: connectionType,
+		Connection:     c,
 	}
 }
 

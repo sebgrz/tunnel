@@ -8,11 +8,11 @@ import (
 )
 
 type AgentRegistrationMessageHandler struct {
-	Connection inter.SetHost
+	Connection inter.ConfigurableConnection
 }
 
 // Execute message
 func (h *AgentRegistrationMessageHandler) Handle(event goeh.Event) {
 	e := event.(*message.AgentRegistrationMessage)
-	h.Connection.SetHost(e.Hostname)
+	h.Connection.Configure(e.Hostname, e.ConnectionType)
 }
