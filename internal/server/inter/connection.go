@@ -12,11 +12,11 @@ type ExternalConnectionInitialData struct {
 }
 
 type SendConnection interface {
-	Send(externalConnectionID string, msgBytes []byte) error
+	Send(externalConnectionID, originHostname string, msgBytes []byte) error
 }
 
 type SendWithHeadersConnection interface {
-	SendWithHeaders(externalConnectionID string, headers communication.BytesHeader, msgBytes []byte) error
+	SendWithHeaders(externalConnectionID, originHostname string, headers communication.BytesHeader, msgBytes []byte) error
 }
 
 type ListenConnection interface {

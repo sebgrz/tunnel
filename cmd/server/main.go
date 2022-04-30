@@ -7,6 +7,7 @@ import (
 	"os"
 	"proxy/internal/server"
 	"proxy/internal/server/configuration"
+	"proxy/pkg/helper"
 )
 
 var (
@@ -29,7 +30,7 @@ func main() {
 	flag.Parse()
 	
 	// Load configuration
-	config, err := configuration.LoadConfiguration(*configPath)
+	config, err := helper.LoadJsonFile[configuration.Configuration](*configPath)
 
 	server := server.NewServer(config, *externalPort, *externalSslPort, *advertisingAgentPort)
 

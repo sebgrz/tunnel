@@ -24,7 +24,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: "/app/cmd/agent -server server:5050 -hostname proxy.local -destination http://web-app:2368 -type=http"
+    command: "/app/cmd/agent -config /config/agent-http-config.json"
+    volumes:
+      - $PWD/ssl:/config
     depends_on:
       - server
     restart: on-failure

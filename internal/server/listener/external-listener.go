@@ -57,7 +57,7 @@ func NewExternalListener(
 			case msgToExternal := <-chanMsgToExternal:
 				mu.Lock()
 				if con, ok := l.connections[msgToExternal.ExternalConnectionID]; ok {
-					err := con.Send(msgToExternal.ExternalConnectionID, msgToExternal.Content)
+					err := con.Send(msgToExternal.ExternalConnectionID, "not implemented", msgToExternal.Content)
 					if err != nil {
 						log.Print(err)
 					}

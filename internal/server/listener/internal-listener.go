@@ -49,7 +49,7 @@ func NewInternalListener(
 				if con, ok := l.connections[mapKey(sendMessage.ConnectionType, sendMessage.Host)]; ok {
 					switch sendMessage.MessageType {
 					case enum.MessageExternalToInternalMessageType:
-						err := con.Send(sendMessage.ExternalConnectionID, sendMessage.Content)
+						err := con.Send(sendMessage.ExternalConnectionID, sendMessage.Host, sendMessage.Content)
 						if err != nil {
 							log.Print(err)
 						}
@@ -57,7 +57,7 @@ func NewInternalListener(
 						headers := communication.BytesHeader{
 							key.MessageTypeBytesHeader: key.CloseExternalPersistentConnectionMessageType,
 						}
-						err := con.SendWithHeaders(sendMessage.ExternalConnectionID, headers, sendMessage.Content)
+						err := con.SendWithHeaders(sendMessage.ExternalConnectionID, sendMessage.Host, headers, sendMessage.Content)
 						if err != nil {
 							log.Print(err)
 						}

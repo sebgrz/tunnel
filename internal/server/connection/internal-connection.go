@@ -47,7 +47,7 @@ func NewInternalConnection(con net.Conn, chanRemoveConnection chan<- pack.ChanIn
 	return c
 }
 
-func (c *InternalConnection) Send(externalConnectionID string, msgBytes []byte) error {
+func (c *InternalConnection) Send(externalConnectionID, originHostname string, msgBytes []byte) error {
 	if c.connection == nil {
 		return fmt.Errorf("internal connection is not initialized")
 	}
@@ -58,6 +58,7 @@ func (c *InternalConnection) Send(externalConnectionID string, msgBytes []byte) 
 		// This header should back from agent
 		// Purpose of it is to return response to the correct external connection
 		key.ExternalConnectionIDKey: externalConnectionID,
+		key.OriginHostname: originHostname,
 	}
 	msgBytes = communication.SerializeBytesMessage(headers, msgBytes)
 	_, err := c.connection.Write(msgBytes)
@@ -102,7 +103,7 @@ func (c *InternalConnection) Listen() {
 	}
 }
 
-func (c *InternalConnection) SendWithHeaders(externalConnectionID string, headers communication.BytesHeader, msgBytes []byte) error {
+func (c *InternalConnection) SendWithHeaders(externalConnectionID, originHostname string, headers communication.BytesHeader, msgBytes []byte) error {
 	if c.connection == nil {
 		return fmt.Errorf("internal connection is not initialized")
 	}
@@ -114,6 +115,7 @@ func (c *InternalConnection) SendWithHeaders(externalConnectionID string, header
 	defer c.mutexSendMessage.Unlock()
 
 	headers[key.ExternalConnectionIDKey] = externalConnectionID
+	headers[key.OriginHostname] = originHostname
 
 	msgBytes = communication.SerializeBytesMessage(headers, msgBytes)
 	_, err := c.connection.Write(msgBytes)

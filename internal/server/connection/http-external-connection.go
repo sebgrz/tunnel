@@ -42,7 +42,7 @@ func NewHTTPExternalConnection(con net.Conn, chanRemoveConnection chan<- string,
 	return c
 }
 
-func (c *HTTPExternalConnection) Send(externalConnectionID string, msgBytes []byte) error {
+func (c *HTTPExternalConnection) Send(externalConnectionID, originHostname string, msgBytes []byte) error {
 	if c.connection == nil {
 		return fmt.Errorf("external connection is not initialized")
 	}

@@ -4,10 +4,11 @@ import (
 	"log"
 	"net"
 	"proxy/internal/agent/client"
-	"proxy/pkg/enum"
+	"proxy/internal/agent/configuration"
 	"proxy/internal/agent/http"
 	"proxy/internal/agent/pack"
 	"proxy/pkg/communication"
+	"proxy/pkg/enum"
 	"proxy/pkg/key"
 	"proxy/pkg/message"
 	"sync"
@@ -20,21 +21,30 @@ import (
 type CallDestinationHandler func(headers communication.BytesHeader, msg []byte)
 
 type Agent struct {
-	serverAddress      string
-	hostnameListener   string
-	destinationAddress string
-	connectionType     enum.AgentConnectionType
-
+	config                *configuration.Configuration
 	waitingConnections    map[string]CallDestinationHandler
 	persistentConnections map[string]*client.WSClient // TODO: maybe some abstraction - interface for different persistent connections
 }
 
-func NewAgent(serverAddress, hostnameListener, destinationAddress string, connectionType enum.AgentConnectionType) *Agent {
+func NewAgent(config *configuration.Configuration, serverAddress, hostnameListener, destinationAddress string, connectionType enum.AgentConnectionType) *Agent {
+	if config == nil {
+		config = &configuration.Configuration{
+			ServerAddress: serverAddress,
+			Destination: configuration.Destination{
+				Hostname:       hostnameListener,
+				ConnectionType: connectionType,
+				Proxy: []configuration.DestinationProxy{
+					{
+						OriginHostname:     hostnameListener,
+						DestinationAddress: destinationAddress,
+					},
+				},
+			},
+		}
+	}
+
 	a := &Agent{
-		serverAddress:         serverAddress,
-		hostnameListener:      hostnameListener,
-		destinationAddress:    destinationAddress,
-		connectionType:        connectionType,
+		config:                config,
 		waitingConnections:    make(map[string]CallDestinationHandler),
 		persistentConnections: make(map[string]*client.WSClient),
 	}
@@ -44,15 +54,15 @@ func NewAgent(serverAddress, hostnameListener, destinationAddress string, connec
 func (a *Agent) Start() {
 	uid, _ := uuid.GenerateUUID()
 
-	con, err := net.Dial("tcp", a.serverAddress)
+	con, err := net.Dial("tcp", a.config.ServerAddress)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("config %+v err: %s", a.config, err)
 	}
 
 	// Send agent registration message
 	// That message register this specific agent on the server side
 	time.Sleep(2 * time.Second)
-	msgRegistrationBytes := communication.SerializeBytesMessage(nil, createAgentRegistrationMessage(uid, a.hostnameListener, a.connectionType))
+	msgRegistrationBytes := communication.SerializeBytesMessage(nil, createAgentRegistrationMessage(uid, a.config.Destination.Hostname, a.config.Destination.ConnectionType))
 	con.Write(msgRegistrationBytes)
 
 	chanAddProxyConnection := make(chan []byte)
@@ -71,16 +81,28 @@ func (a *Agent) Start() {
 				headers, msgBytes := communication.DeserializeBytesMessage(msg)
 				if connectionID, ok := headers[key.ExternalConnectionIDKey]; ok {
 					log.Printf("msg received for connection: %s", connectionID)
+
+					var originHostname string
+					if originHostname, ok = headers[key.OriginHostname]; !ok {
+						log.Fatalf("connection_id %s - no OriginHostname header", connectionID)
+					}
+
+					destinationAddress, err := a.config.Destination.GetDestinationAddress(originHostname)
+					if err != nil {
+						log.Fatalf("connection_id %s - %s", connectionID, err)
+					}
+
 					handler := func(headers communication.BytesHeader, msg []byte) {
-						switch a.connectionType {
+						switch a.config.Destination.ConnectionType {
 						case enum.HTTPAgentConnectionType:
 							// Set up timeout
 							go func(connectionID string) {
 								<-time.Tick(30 * time.Second)
 								chanRemoveProxyConnection <- connectionID
 							}(connectionID)
+
 							// 1. Call destination address and wait for response
-							response, err := http.Send(a.destinationAddress, msg)
+							response, err := http.Send(destinationAddress, msg)
 							if err != nil {
 								log.Println(err)
 								return
@@ -96,7 +118,7 @@ func (a *Agent) Start() {
 							var persistentConnection *client.WSClient
 							if persistentConnection, ok = a.persistentConnections[connectionID]; !ok {
 								// 1. Create websocket connection to destinationAddress
-								persistentConnection = client.NewWSClient(connectionID, a.destinationAddress, chanSendPersistentResponse, chanRemoveProxyPersistentConnection)
+								persistentConnection = client.NewWSClient(connectionID, destinationAddress, chanSendPersistentResponse, chanRemoveProxyPersistentConnection)
 								// 2. Save connection in map
 								a.persistentConnections[connectionID] = persistentConnection
 								go persistentConnection.Listen()
@@ -175,7 +197,7 @@ func createAgentRegistrationMessage(uid string, hostnameListener string, connect
 			ID:            uid,
 			CorrelationID: uid,
 		},
-		Hostname: hostnameListener,
+		Hostname:       hostnameListener,
 		ConnectionType: connectionType,
 	}
 	msg.SavePayload(msg)

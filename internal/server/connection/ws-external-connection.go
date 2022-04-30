@@ -42,7 +42,7 @@ func NewWSExternalConnection(con net.Conn, chanRemoveConnection chan<- string, c
 	return c
 }
 
-func (c *WSExternalConnection) Send(externalConnectionID string, msgBytes []byte) error {
+func (c *WSExternalConnection) Send(externalConnectionID, originHostname string, msgBytes []byte) error {
 	if c.wsConnection == nil {
 		return fmt.Errorf("external ws connection is not initialized")
 	}

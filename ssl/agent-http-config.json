@@ -1,0 +1,13 @@
+{
+  "server": "server:5050",
+  "destination": {
+    "hostname": "proxy.local",
+    "connection_type": "http",
+    "proxy": [
+      {
+        "origin_hostname": "proxy.local",
+        "destination": "http://web-app:2368"
+      }
+    ]
+  }
+}
