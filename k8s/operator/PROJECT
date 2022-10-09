@@ -1,0 +1,24 @@
+domain: my.domain
+layout:
+- go.kubebuilder.io/v3
+plugins:
+  manifests.sdk.operatorframework.io/v2: {}
+  scorecard.sdk.operatorframework.io/v2: {}
+projectName: tunnel-k8s-operator
+repo: github.com/sebgrz/operator
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: my.domain
+  group: tunnel
+  kind: TunnelAgent
+  path: github.com/sebgrz/operator/api/v1
+  version: v1
+- controller: true
+  domain: my.domain
+  group: tunnel
+  kind: Service
+  version: v1
+version: "3"

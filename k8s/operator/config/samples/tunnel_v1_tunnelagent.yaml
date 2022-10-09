@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+
+---
+
+apiVersion: tunnel.my.domain/v1
+kind: TunnelAgent
+metadata:
+  namespace: app
+  name: web-app-tunnel
+spec:
+  hostname: proxy.local
+  server: 172.17.0.1:5050 # kind k8s host access
+  type: http

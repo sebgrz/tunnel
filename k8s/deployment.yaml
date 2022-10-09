@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: app
+  name: web-app-deployment
+  labels:
+    app: web-app
+spec:
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      containers:
+      - name: web-app
+        image: ghost:5.14.2
+        env:
+        - name: database__client
+          value: sqlite3
+        - name: database__connection__filename
+          value: "content/data/ghost.db"
+        - name: database__useNullAsDefault
+          value: "true"
+        - name: database__debug
+          value: "false"
+        - name: url
+          value: http://proxy.local
+        ports:
+        - containerPort: 80
+          name: web-app-port
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: app
+  name: web-app-service
+  labels:
+    tunnel-agent: web-app-tunnel
+spec:
+  selector:
+    app: web-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: web-app-port
