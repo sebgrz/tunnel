@@ -79,7 +79,7 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	logger.Info(fmt.Sprintf("service: %+v", service))
 
 	result, err := r.deleteFinalizerIfPossible(ctx, &service, r.deleteDeployment)
-	if err != nil || result != nil{
+	if err != nil || result != nil {
 		return *result, err
 	}
 

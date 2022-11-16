@@ -20,10 +20,11 @@ import (
 	"context"
 	"fmt"
 
-	//appsv1 "k8s.io/api/apps/v1"
-	//corev1 "k8s.io/api/core/v1"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -63,18 +64,66 @@ func (r *TunnelAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// If TunnelAgent is deleted - destroy deployment if exists
 	// TODO: additional condition for update event
 	var tunnelAgent tunnelv1.TunnelAgent
-	// existingDeployment := &appsv1.Deployment{}
-	// existingService := &corev1.Service{}
 
 	err := r.Get(ctx, req.NamespacedName, &tunnelAgent)
 	if err != nil {
 		if errors.IsNotFound(err) {
-
+			// TODO: delete deployment?
 		} else {
 			logger.Error(err, "check TunnelAgent object")
 		}
 	}
 	logger.Info(fmt.Sprintf("TunnelAgent %+v", tunnelAgent))
+	// Get TunnelAgent deployment
+	var tunnelAgentDeployment appsv1.Deployment
+	err = r.Get(ctx, types.NamespacedName{Name: deploymentName(req.Name), Namespace: req.Namespace}, &tunnelAgentDeployment)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// create deployment
+			// 1. get service
+			servicesList := &corev1.ServiceList{}
+			servicesListOptions := []client.ListOption{
+				client.InNamespace(req.Namespace),
+				client.MatchingLabels{"tunnel-agent": req.Name},
+			}
+			err = r.List(ctx, servicesList, servicesListOptions...)
+			if err != nil {
+				logger.Error(err, "get services list")
+				return ctrl.Result{}, nil
+			}
+			servicesCount := len(servicesList.Items)
+			if servicesCount == 0 || servicesCount >= 2 {
+				logger.Error(fmt.Errorf("wrong size: %d", servicesCount), "get services list")
+				return ctrl.Result{}, nil
+			}
+			logger.Info(fmt.Sprintf("services list: %+v", servicesList.Items))
+			service := servicesList.Items[0]
+			servicePort := service.Spec.Ports[0].Port
+			destination := fmt.Sprintf("%s:%d", service.Name, servicePort)
+
+			// Create deployment
+			deploymentConfig := tunnelAgentDeploymentConfig{
+				Name:        tunnelAgent.Name,
+				Namespace:   tunnelAgent.Namespace,
+				Destination: destination,
+				Resource:    &tunnelAgent,
+			}
+			tunnelAgentDeployment := createTunnelAgentDeployment(deploymentConfig)
+			logger.Info(fmt.Sprintf("creating new TunnelAgent Deployment for service: %s", destination))
+
+			err = r.Create(ctx, tunnelAgentDeployment)
+			if err != nil {
+				logger.Error(err, "TunnelAgent Deployment failed")
+			}
+		} else {
+			logger.Error(err, "get TunnelAgent deployment object")
+
+			return ctrl.Result{}, nil
+		}
+	} else {
+		logger.Error(err, fmt.Sprintf("get TunnelAgent Deployment %s", err))
+		// TODO: check tunnelAgentDeployment content
+	}
 
 	return ctrl.Result{}, nil
 }
